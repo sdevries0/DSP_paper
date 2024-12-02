@@ -85,7 +85,7 @@ def run(env_string, algorithm_string):
     if algorithm_string == "FF":
         fitness_function = ff_evaluate.Evaluator(env, 0.01, stepsize_controller=diffrax.PIDController(atol=1e-6, rtol=1e-6, dtmin=0.001), max_steps=500)
 
-        variable_list = [["y1", "y2", "tar"]]
+        variable_list = [["y" + str(i) for i in range(env.n_obs)], ["a" + str(i) for i in range(state_size)] + ["u"] + ["tar" + str(i) for i in range(env.n_control)]]
 
         layer_sizes = jnp.array([env.n_control])
 
@@ -94,10 +94,8 @@ def run(env_string, algorithm_string):
 
     elif algorithm_string == "GP":
         fitness_function = dynamic_evaluate.Evaluator(env, state_size, 0.05, solver=diffrax.Dopri5(), stepsize_controller=diffrax.PIDController(atol=1e-4, rtol=1e-4, dtmin=0.001), max_steps=1000)
-        # fitness_function = dynamic_evaluate.Evaluator(env, state_size, 0.01)
 
-        # variable_list = [["y1", "y2", "a1", "a2", "u", "tar"], ["a1", "a2", "tar"]]
-        variable_list = [["y1", "y2", "y3", "y4", "a1", "a2", "u"], ["a1", "a2"]]
+        variable_list = [["y" + str(i) for i in range(env.n_obs)] + ["a" + str(i) for i in range(state_size)] + ["u"]]
 
 
         layer_sizes = jnp.array([state_size, env.n_control])

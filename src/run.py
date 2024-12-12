@@ -10,8 +10,8 @@ import jax.random as jrandom
 
 import MultiTreeGP.evaluators.dynamic_evaluate as dynamic_evaluate
 import MultiTreeGP.evaluators.static_evaluate as static_evaluate
-import CMAES_evaluate
-import LQG_evaluate
+import CMAES_evaluate as CMAES_evaluate
+import LQG_evaluate as LQG_evaluate
 from NDE import ParameterReshaper
 
 from MultiTreeGP.genetic_programming import GeneticProgramming
@@ -38,7 +38,7 @@ def run(env_string, algorithm_string, seed = 0, param_setting = "Constant"):
     init_key, data_key = jrandom.split(key)
 
     population_size = 100
-    num_populations = 5
+    num_populations = 10
     num_generations = 50
     state_size = 2
     T = 50
@@ -52,7 +52,7 @@ def run(env_string, algorithm_string, seed = 0, param_setting = "Constant"):
         if param_setting == "Changing":
             env = ChangingHarmonicOscillator(process_noise, obs_noise, n_obs=2)
         else:
-            env = HarmonicOscillator(process_noise, obs_noise, n_obs=1)
+            env = HarmonicOscillator(process_noise, obs_noise, n_obs=2)
 
         operator_list = [("+", lambda x, y: x + y, 2, 0.5), 
                     ("-", lambda x, y: x - y, 2, 0.1),
@@ -111,7 +111,7 @@ def run(env_string, algorithm_string, seed = 0, param_setting = "Constant"):
                                 num_populations = num_populations)
         
     elif algorithm_string == "NDE":
-        latent_dim = 16
+        latent_dim = 5
         parameter_reshaper = ParameterReshaper(env.n_obs + env.n_control, latent_dim, env.n_control, env.n_targets)
         fitness_function = CMAES_evaluate.Evaluator(env, parameter_reshaper, latent_dim, 0.01, max_steps = 10000, solver=diffrax.GeneralShARK())
 
@@ -129,7 +129,8 @@ def run(env_string, algorithm_string, seed = 0, param_setting = "Constant"):
     population = strategy.initialize_population(init_key)
 
     for g in range(num_generations):
-        fitness, population = strategy.evaluate_population(population, data)
+        key, eval_key, sample_key = jrandom.split(key, 3)
+        fitness, population = strategy.evaluate_population(population, data, eval_key)
         
         if algorithm_string in ["Static", "Dynamic", "Random"]:
             best_fitness, best_solution = strategy.get_statistics(g)
@@ -139,7 +140,7 @@ def run(env_string, algorithm_string, seed = 0, param_setting = "Constant"):
             print(f"In generation {g+1}, best fitness = {best_fitness:.4f}")
 
         if g < (num_generations-1):
-            key, sample_key = jrandom.split(key)
+            
             if algorithm_string == "Random":
                 population = strategy.initialize_population(sample_key)
                 population[0,0] = best_solution
@@ -152,9 +153,10 @@ def run(env_string, algorithm_string, seed = 0, param_setting = "Constant"):
 param_settings = ["Constant", "Different", "Changing"]
 envs = ["HO", "ACR", "CSTR"]
 algorithms = ["Static", "Dynamic", "Random", "NDE", "LQG"]
+seed = 1
 
-best_fitness, best_solutions = run("HO", "Static", "Constant")
-# best_fitness, best_solutions = run("HO", "Dynamic", "Constant")
-# best_fitness, best_solutions = run("HO", "Random", "Constant")
-# best_fitness = run("HO", "NDE", "Constant")
-# fitness = run("HO", "LQG", "Constant")
+# best_fitness, best_solutions = run("HO", "Static", seed, "Constant")
+best_fitness, best_solutions = run("ACR", "Dynamic", seed, "Constant")
+# best_fitness, best_solutions = run("HO", "Random", seed, "Constant")
+# best_fitness = run("ACR", "NDE", seed, "Constant")
+# fitness = run("HO", "LQG", seed, "Constant")

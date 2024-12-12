@@ -21,7 +21,7 @@ class CMA_ES():
 
         """
     def __init__(self, num_generations, population_size, fitness_function, num_dims, key) -> None:
-        self.cma_strategy = evosax.CMA_ES(popsize = population_size, num_dims = num_dims, elite_ratio=0.1, sigma_init=0.1)
+        self.cma_strategy = evosax.CMA_ES(popsize = population_size, num_dims = num_dims, elite_ratio=0.1, sigma_init=3.0, n_devices=10)
         self.cma_state = self.cma_strategy.initialize(key)
         self.current_generation = 0
         self.fitness_function = fitness_function
@@ -39,7 +39,7 @@ class CMA_ES():
         population, self.cma_state = self.cma_strategy.ask(key, self.cma_state)
         return population
 
-    def evaluate_population(self, population: Array, data: Tuple) -> Tuple[Array, list]:
+    def evaluate_population(self, population: Array, data: Tuple, key: PRNGKey) -> Tuple[Array, list]:
         """Evaluates every candidate in population and assigns a fitness.
 
         :param population: Population of candidates

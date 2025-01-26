@@ -148,7 +148,7 @@ def run(env_string, algorithm_string, seed = 0, param_setting = "Constant"):
             else:
                 population = strategy.evolve(population, fitness, sample_key)
 
-    return strategy.get_statistics(g)
+    return strategy.get_statistics()
 
 param_settings = ["Constant", "Different", "Changing"]
 envs = ["HO", "ACR", "CSTR"]

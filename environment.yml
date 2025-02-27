@@ -1,4 +1,4 @@
-name: gp_policies
+name: dsp_env
 channels:
   - defaults
   - conda-forge

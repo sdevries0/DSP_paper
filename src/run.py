@@ -1,162 +1,165 @@
 import os
-os.environ["XLA_FLAGS"] = '--xla_force_host_platform_device_count=10'
-
 import sys
-sys.path.append("/Users/sigur.de.vries/Library/Mobile Documents/com~apple~CloudDocs/phd/MultiTreeGP")
 
+print("nr of cpus", os.cpu_count())
 import jax
+print(jax.devices())
+
 import jax.numpy as jnp
 import jax.random as jrandom
+import numpy as np
+import time
 
-import MultiTreeGP.evaluators.dynamic_evaluate as dynamic_evaluate
-import MultiTreeGP.evaluators.static_evaluate as static_evaluate
-import CMAES_evaluate as CMAES_evaluate
-import LQG_evaluate as LQG_evaluate
-from NDE import ParameterReshaper
+from miscellaneous.expression import Expression
+from miscellaneous.networks import NetworkTrees
+import genetic_operators.simplification as simplification
 
-from MultiTreeGP.genetic_programming import GeneticProgramming
-from CMAES import CMA_ES
+import evaluators.evaluate as evaluate
+import evaluators.cma_es_evaluator as cma_evaluate
+import evaluators.feedforward_evaluate as ff_evaluate
+import evaluators.lqg_evaluate as LQG_evaluate
 
-from MultiTreeGP.environments.control_environments.harmonic_oscillator import HarmonicOscillator, ChangingHarmonicOscillator
-from MultiTreeGP.environments.control_environments.reactor import StirredTankReactor
-from MultiTreeGP.environments.control_environments.acrobot import Acrobot, Acrobot2
-import diffrax
+from algorithms.genetic_programming import GeneticProgramming
+from algorithms.cma_es import CMA_ES
+from algorithms.random_search import RandomSearch
+
+from environments.harmonic_oscillator import HarmonicOscillator
+from environments.reactor import StirredTankReactor
+from environments.cart_pole import CartPole
+from environments.acrobot import Acrobot, Acrobot2
 
 def get_data(key, env, batch_size, dt, T, param_setting):
+    """
+    Get the data for the environment
+    """
     init_key, noise_key1, noise_key2, param_key = jrandom.split(key, 4)
     x0, targets = env.sample_init_states(batch_size, init_key)
     process_noise_keys = jrandom.split(noise_key1, batch_size)
     obs_noise_keys = jrandom.split(noise_key2, batch_size)
-    ts = jnp.arange(0, T, dt)
+    ts = jnp.arange(0,T,dt)
 
     params = env.sample_params(batch_size, param_setting, ts, param_key)
     return x0, ts, targets, process_noise_keys, obs_noise_keys, params
 
-
-def run(env_string, algorithm_string, seed = 0, param_setting = "Constant"):
+def run(seed, program, env_string, param_setting, n_obs):
     key = jrandom.PRNGKey(seed)
     init_key, data_key = jrandom.split(key)
 
+    # Define the parameters of the algorithm
     population_size = 100
-    num_populations = 10
-    num_generations = 50
+    num_populations = 2
+    num_generations = 3
     state_size = 2
-    T = 50
+    T = 30
     dt = 0.2
-    batch_size = 8
+    pool_size = os.cpu_count()
+    batch_size = 4
 
     process_noise = 0.05
-    obs_noise = 0.1
+    obs_noise = 0.3
 
+    # Define the environment
     if env_string=="HO":
-        if param_setting == "Changing":
-            env = ChangingHarmonicOscillator(process_noise, obs_noise, n_obs=2)
-        else:
-            env = HarmonicOscillator(process_noise, obs_noise, n_obs=2)
+        env = HarmonicOscillator(process_noise, obs_noise, n_obs=n_obs)
 
-        operator_list = [("+", lambda x, y: x + y, 2, 0.5), 
-                    ("-", lambda x, y: x - y, 2, 0.1),
-                    ("*", lambda x, y: x * y, 2, 0.5),
-                    ("/", lambda x, y: x / y, 2, 0.1),
-                    ("**", lambda x, y: x ** y, 2, 0.1),
-                    ]
+        operators_prob = jnp.array([0.5, 0.3, 0.5, 0.1, 0.1])
+        unary_functions = []
+        dt0 = 0.02
 
     elif env_string=="ACR":
-        env = Acrobot(process_noise, obs_noise)
-
-        # env = Acrobot2(process_noise, obs_noise, n_obs=None)
-
-        operator_list = [("+", lambda x, y: x + y, 2, 0.5), 
-                        ("-", lambda x, y: x - y, 2, 0.1),
-                        ("*", lambda x, y: x * y, 2, 0.5),
-                        ("/", lambda x, y: x / y, 2, 0.1),
-                        ("**", lambda x, y: x ** y, 2, 0.1),
-                        ("sin", lambda x: jnp.sin(x), 1, 0.1),
-                        ("cos", lambda x: jnp.cos(x), 1, 0.1)
-                        ]
+        env = Acrobot(process_noise, obs_noise, n_obs)
+        
+        operators_prob = jnp.array([0.5, 0.3, 0.5, 0.1, 0.1, 0.1, 0.1])
+        unary_functions = ["sin", "cos"]
+        dt0 = 0.02
 
     elif env_string=="CSTR":
-        env = StirredTankReactor(process_noise, obs_noise, n_obs=2)
+        env = StirredTankReactor(process_noise, obs_noise, n_obs=n_obs)
 
-        operator_list = [("+", lambda x, y: x + y, 2, 0.5), 
-                        ("-", lambda x, y: x - y, 2, 0.1),
-                        ("*", lambda x, y: x * y, 2, 0.5),
-                        ("/", lambda x, y: x / y, 2, 0.1),
-                        ("**", lambda x, y: x ** y, 2, 0.1),
-                        ("exp", lambda x: jnp.exp(x), 1, 0.1),
-                        ("log", lambda x: jnp.log(x), 1, 0.1)
-                        ]
+        operators_prob = jnp.array([0.5, 0.3, 0.5, 0.1, 0.1, 0.1, 0.1])
+        unary_functions = ["exp", "log"]
+        dt0 = 0.0002
 
+    # Get the data
     data = get_data(data_key, env, batch_size, dt, T, param_setting)
 
-    if algorithm_string == "Static":
-        fitness_function = static_evaluate.Evaluator(env, 0.01, max_steps = 10000, solver=diffrax.GeneralShARK())
+    # Define the fitness function and algorithm
+    if program == "Static":
+        fitness_function = ff_evaluate.Evaluator(env, state_size, dt0)
 
-        variable_list = [["y" + str(i) for i in range(env.n_obs)] + ["tar" + str(i) for i in range(env.n_targets)]]
+        # Define the expressions for the layers
+        layer_expressions = [Expression(obs_size=env.n_obs, target_size=env.n_targets, unary_functions = unary_functions, operators_prob=operators_prob)]
 
         layer_sizes = jnp.array([env.n_control])
+        assert len(layer_sizes) == len(layer_expressions), "There is not a set of expressions for every type of layer"
 
-        strategy = GeneticProgramming(num_generations, population_size, fitness_function, operator_list, variable_list, layer_sizes,
-                                num_populations = num_populations)
+        strategy = GeneticProgramming(num_generations, population_size, fitness_function, layer_expressions, layer_sizes, 
+                                num_populations = num_populations, state_size = state_size, pool_size = pool_size)
+    
+    elif program == "Random":
+        fitness_function = evaluate.Evaluator(env, state_size, dt0)
 
-    elif algorithm_string == "Dynamic" or algorithm_string == "Random":
-        fitness_function = dynamic_evaluate.Evaluator(env, state_size, 0.01, max_steps = 10000, solver=diffrax.GeneralShARK())
-
-        variable_list = [["y" + str(i) for i in range(env.n_obs)] + ["a" + str(i) for i in range(state_size)] + ["u"] + ["tar" + str(i) for i in range(env.n_targets)],
-                         ["a" + str(i) for i in range(state_size)]]#  + ["tar" + str(i) for i in range(env.n_targets)]]
+        # Define the expressions for the layers
+        layer_expressions = [Expression(obs_size=env.n_obs, state_size=state_size, control_size=env.n_control, target_size=env.n_targets, unary_functions = unary_functions, operators_prob=operators_prob), 
+                            Expression(obs_size=0, state_size=state_size, control_size=0, target_size=env.n_targets, unary_functions = unary_functions,
+                                condition=lambda self, tree: sum([leaf in self.state_variables for leaf in jax.tree_util.tree_leaves(tree)])==0, operators_prob = operators_prob)]
 
         layer_sizes = jnp.array([state_size, env.n_control])
-        
-        strategy = GeneticProgramming(num_generations, population_size, fitness_function, operator_list, variable_list, layer_sizes, 
-                                num_populations = num_populations)
-        
-    elif algorithm_string == "NDE":
-        latent_dim = 5
-        parameter_reshaper = ParameterReshaper(env.n_obs + env.n_control, latent_dim, env.n_control, env.n_targets)
-        fitness_function = CMAES_evaluate.Evaluator(env, parameter_reshaper, latent_dim, 0.01, max_steps = 10000, solver=diffrax.GeneralShARK())
+        assert len(layer_sizes) == len(layer_expressions), "There is not a set of expressions for every type of layer"
 
-        key, cma_key = jrandom.split(key)
-        strategy = CMA_ES(num_generations, population_size*num_populations, fitness_function, parameter_reshaper.total_parameters, cma_key)
+        strategy = RandomSearch(num_generations, population_size, fitness_function, layer_expressions, layer_sizes, num_populations = num_populations, state_size = state_size, pool_size = pool_size)
+    
+    elif program == "NDE":
+        fitness_function = cma_evaluate.Evaluator(env, state_size, dt0)
+        strategy = CMA_ES(num_generations, population_size*num_populations, fitness_function, fitness_function.n_param, jrandom.fold_in(key, 0))
+    
+    elif program == "Dynamic":
+        fitness_function = evaluate.Evaluator(env, state_size, dt0)
 
-    elif algorithm_string == "LQG":
-        fitness_function = LQG_evaluate.Evaluator(env, 0.01)
+        # Define the expressions for the layers
+        layer_expressions = [Expression(obs_size=env.n_obs, state_size=state_size, control_size=env.n_control, target_size=env.n_targets, unary_functions = unary_functions, operators_prob=operators_prob), 
+                            Expression(obs_size=0, state_size=state_size, control_size=0, target_size=env.n_targets, unary_functions = unary_functions,
+                                condition=lambda self, tree: sum([leaf in self.state_variables for leaf in jax.tree_util.tree_leaves(tree)])==0, operators_prob = operators_prob)]
+
+        layer_sizes = jnp.array([state_size, env.n_control])
+        assert len(layer_sizes) == len(layer_expressions), "There is not a set of expressions for every type of layer"
+        
+        strategy = GeneticProgramming(num_generations, population_size, fitness_function, layer_expressions, layer_sizes, 
+                                num_populations = num_populations, state_size = state_size, pool_size = pool_size)
+        
+    elif program == "LQG":
+        assert env_string == "HO", "LQG is only implemented for the Harmonic Oscillator"
+        fitness_function = LQG_evaluate.Evaluator(env, dt0)
         _,_,_, fitness = fitness_function(data)
-
-        print(fitness)
 
         return fitness
 
+    # Initialize the population
     population = strategy.initialize_population(init_key)
 
+    # Run the algorithm for a number of generations
     for g in range(num_generations):
-        key, eval_key, sample_key = jrandom.split(key, 3)
-        fitness, population = strategy.evaluate_population(population, data, eval_key)
+        fitnesses, population = strategy.evaluate_population(population, data)
         
-        if algorithm_string in ["Static", "Dynamic", "Random"]:
-            best_fitness, best_solution = strategy.get_statistics(g)
-            print(f"In generation {g+1}, best fitness = {best_fitness:.4f}, best solution = {strategy.to_string(best_solution)}")
+        best_fitness, best_solution = strategy.get_statistics(g)
+        if program == "NDE":
+            print(f"In generation {g+1}, best fitness = {best_fitness}")
         else:
-            best_fitness = strategy.get_statistics(g)
-            print(f"In generation {g+1}, best fitness = {best_fitness:.4f}")
+            print(f"In generation {g+1}, best fitness = {best_fitness}, best solution = {best_solution}")
 
-        if g < (num_generations-1):
-            
-            if algorithm_string == "Random":
-                population = strategy.initialize_population(sample_key)
-                population[0,0] = best_solution
-                strategy.increase_generation()
-            else:
-                population = strategy.evolve(population, fitness, sample_key)
+        key, sample_key = jrandom.split(key)
+        population = strategy.sample_population(sample_key, population)
 
     return strategy.get_statistics()
 
-param_settings = ["Constant", "Different", "Changing"]
-envs = ["HO", "ACR", "CSTR"]
-algorithms = ["Static", "Dynamic", "Random", "NDE", "LQG"]
-seed = 1
+if __name__ == '__main__':
+    param_settings = ["Constant", "Different"]
+    envs = ["HO", "ACR", "CSTR"]
+    algorithms = ["Static", "Dynamic", "Random", "NDE", "LQG"]
+    seed = 1
 
-# best_fitness, best_solutions = run("HO", "Static", seed, "Constant")
-best_fitness, best_solutions = run("ACR", "Dynamic", seed, "Constant")
-# best_fitness, best_solutions = run("HO", "Random", seed, "Constant")
-# best_fitness = run("ACR", "NDE", seed, "Constant")
-# fitness = run("HO", "LQG", seed, "Constant")
+    best_fitness, best_solutions = run(seed, "Static", "CSTR", "Constant", 2)
+    # best_fitness, best_solutions = run(seed, "Dynamic", "HO", "Constant", 2)
+    # best_fitness, best_solutions = run(seed, "Random", "HO", "Constant", 2)
+    # best_fitness = run(seed, "NDE", "HO", "Constant", 2)
+    # fitness = run(seed, "LQG", "HO", "Constant", 2)

@@ -35,13 +35,13 @@ def run(seed, program, obs_noise):
 
     # Parameters
     population_size = 100
-    num_generations = 10
+    num_generations = 5
     num_populations = 2
     state_size = 2
     T = 30
     dt = 0.02
     pool_size = os.cpu_count()
-    batch_size = 4
+    batch_size = 24
     sigma = 0.05
 
     param_setting = "Constant"

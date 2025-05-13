@@ -46,6 +46,8 @@ class Evaluator:
         env = copy.copy(self.env)
         env.initialize_parameters(params, ts)
 
+        targets = diffrax.LinearInterpolation(ts, jnp.hstack([t*jnp.ones(int(ts.shape[0]//target.shape[0])) for t in target]))
+
         policy = model[0]
         dt = ts[1] - ts[0]
         
@@ -54,7 +56,7 @@ class Evaluator:
             noise_key, _key = jrandom.split(noise_key)
             _, y = env.f_obs(obs_noise_key, (t, state))
             buffer = jnp.concatenate([buffer[1:], jnp.expand_dims(y, axis=0)])
-            u = policy({"y":jnp.ravel(buffer), "tar":target})
+            u = policy({"y":jnp.ravel(buffer), "tar":jnp.array([targets.evaluate(t)])})
             new_state = state + dt * env.drift(t, state, u) + jnp.sqrt(dt) * jrandom.normal(_key, (env.n_var,)) @ env.diffusion(t, state, 0)
             
             new_carry = (new_state, noise_key, buffer)
@@ -66,8 +68,9 @@ class Evaluator:
         xs = xs[::10]
         ys = ys[::10]
         us = us[::10]
+        targets_evaluated = targets.evaluate(ts)[::10]
 
-        fitness = env.fitness_function(xs, us, target, ts)
+        fitness = env.fitness_function(xs, us, targets_evaluated, ts)
 
         return xs, ys, us, fitness
     

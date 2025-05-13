@@ -48,11 +48,16 @@ class Evaluator:
 
         policy = model[0]
 
+        if target.shape[0] == 0:
+            targets = diffrax.LinearInterpolation(ts, jnp.zeros_like(ts))
+        else:
+            targets = diffrax.LinearInterpolation(ts, jnp.hstack([t*jnp.ones(int(ts.shape[0]//target.shape[0])) for t in target]))
+
         #Define state equation
         def _drift(t, x, args):
             _, y = env.f_obs(obs_noise_key, (t, x)) #Get observations from system
-            # u = policy({"y":y, "tar":target}) #Readout control from hidden state
-            u = policy({"y":y, "tar":target})
+            tar = jnp.array([targets.evaluate(t)])
+            u = policy({"y":y, "tar":tar})
 
             dx = env.drift(t, x, u) #Apply control to system and get system change
             return dx
@@ -60,8 +65,7 @@ class Evaluator:
         #Define diffusion
         def _diffusion(t, x, args):
             _, y = env.f_obs(obs_noise_key, (t, x))
-            # u = policy({"y":y, "tar":target})
-            # u = a
+
             return env.diffusion(t, x, 0)
         
         solver = diffrax.EulerHeun()
@@ -75,8 +79,8 @@ class Evaluator:
 
         xs = sol.ys
         _, ys = jax.lax.scan(env.f_obs, obs_noise_key, (ts, xs))
-        us = jax.vmap(lambda y, tar: policy({"y":y, "tar":tar}), in_axes=[0,None])(ys, target)
+        us = jax.vmap(lambda y, tar: policy({"y":y, "tar":tar}), in_axes=[0,0])(ys, targets.evaluate(ts)[:,None])
 
-        fitness = env.fitness_function(xs, us, target, ts)
+        fitness = env.fitness_function(xs, us, targets.evaluate(ts), ts)
 
         return xs, ys, us, fitness

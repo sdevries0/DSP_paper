@@ -38,17 +38,25 @@ class Evaluator:
         env = copy.copy(self.env)
         env.initialize_parameters(params, ts)
 
+        if target.shape[0] == 0:
+            # For MLPs, we need a target with dimension 0 when target is empty
+            targets = diffrax.LinearInterpolation(ts, jnp.zeros((ts.shape[0], 0)))
+        else:
+            targets = diffrax.LinearInterpolation(ts, jnp.hstack([t*jnp.ones((int(ts.shape[0]//target.shape[0]),1)) for t in target]))
+
         #Define state equation
         def _drift(t, x_a, args):
             x = x_a[:self.latent_size]
             a = x_a[self.latent_size:]
 
+            tar = targets.evaluate(t)
+
             _, y = env.f_obs(obs_noise_key, (t, x)) #Get observations from system
-            u = model.act(a, target)
+            u = model.act(a, tar)
 
             # u = a
             dx = env.drift(t, x, u) #Apply control to system and get system change
-            da = model.update(y, a, u, target) #Compute hidden state updates
+            da = model.update(y, a, u, tar) #Compute hidden state updates
 
             return jnp.concatenate([dx, da])
         
@@ -57,8 +65,10 @@ class Evaluator:
             x = x_a[:self.latent_size]
             a = x_a[self.latent_size:]
             _, y = env.f_obs(obs_noise_key, (t, x))
+
+            tar = targets.evaluate(t)
             
-            u = model.act(a, target)
+            u = model.act(a, tar)
             return jnp.concatenate([env.diffusion(t, x, u), jnp.zeros((self.state_size, self.latent_size))]) #Only the system is stochastic
         
         solver = diffrax.EulerHeun()
@@ -75,10 +85,14 @@ class Evaluator:
         xs = sol.ys[:,:self.latent_size]
         _, ys = jax.lax.scan(env.f_obs, obs_noise_key, (ts, xs))
         activities = sol.ys[:,self.latent_size:]
-        
-        us = jax.vmap(model.act, in_axes=[0,None])(activities, target)
+        us = jax.vmap(lambda a, t: model.act(a, targets.evaluate(t)), in_axes=[0,0])(activities, ts)
 
-        fitness = env.fitness_function(xs, us, target, ts)
+        if target.shape[0] == 0:
+            targets_evaluated = jnp.zeros((ts.shape[0]))
+        else:
+            targets_evaluated = jnp.squeeze(jax.vmap(targets.evaluate)(ts), axis=-1)
+
+        fitness = env.fitness_function(xs, us, targets_evaluated, ts)
 
         return xs, ys, us, activities, fitness
 

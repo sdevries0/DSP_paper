@@ -25,11 +25,17 @@ class Evaluator:
         env = copy.copy(self.env)
         env.initialize_parameters(params, ts)
 
+        targets = diffrax.LinearInterpolation(ts, jnp.hstack([t*jnp.ones(int(ts.shape[0]//target.shape[0])) for t in target]))
+
         def drift(t, variables, args):
-            x_star, u_star, L = args
+            L = args
             x = variables[:self.latent_size]
             mu = variables[self.latent_size:self.latent_size*2]
             P = variables[2*self.latent_size:].reshape(self.latent_size,self.latent_size)
+
+            #Set target state and control
+            x_star = jnp.array([targets.evaluate(t), 0])
+            u_star = -jnp.linalg.pinv(env.b)@env.A@x_star
             
             _, y = env.f_obs(obs_noise_key, (t, x))
             u = jnp.array(-L@(mu-x_star) + u_star)
@@ -51,26 +57,24 @@ class Evaluator:
 
         L = jnp.linalg.inv(env.R)@env.b.T@self.compute_ricatti(env.A, env.b, env.Q, env.R)
 
-        #Set target state and control
-        x_star = jnp.zeros((self.latent_size))
-        for i in range(env.n_dim):
-            x_star = x_star.at[i*env.n_var].set(target[i])
-        u_star = -jnp.linalg.pinv(env.b)@env.A@x_star
-
         brownian_motion = diffrax.UnsafeBrownianPath(shape=(self.latent_size,), key=process_noise_key) #define process noise
         system = diffrax.MultiTerm(diffrax.ODETerm(drift), diffrax.ControlTerm(diffusion, brownian_motion))
 
         init = jnp.concatenate([x0, env.mu0, jnp.ravel(env.P0)])
 
         sol = diffrax.diffeqsolve(
-            system, solver, ts[0], ts[-1], self.dt0, init, saveat=saveat, args=(x_star, u_star, L), adjoint=diffrax.DirectAdjoint(), max_steps=16**7
+            system, solver, ts[0], ts[-1], self.dt0, init, saveat=saveat, args=(L), adjoint=diffrax.DirectAdjoint(), max_steps=16**7
         )
+
+        x_star = jnp.stack([targets.evaluate(ts), jnp.zeros_like(ts)], axis=1)
+        u_star = jax.vmap(lambda _x: -jnp.linalg.pinv(env.b)@env.A@_x)(x_star)
+
         x = sol.ys[:,:self.latent_size]
         mu = sol.ys[:,self.latent_size:2*self.latent_size]
-        u = jax.vmap(lambda m, l: -l@(m-x_star) + u_star, in_axes=[0,None])(mu, L) #Map states to control
+        u = jax.vmap(lambda m, l, _x, _u: -l@(m-_x) + _u, in_axes=[0,None,0,0])(mu, L, x_star, u_star) #Map states to control
         _, y = jax.lax.scan(env.f_obs, obs_noise_key, (ts, x)) #Map states to observations
 
-        costs = env.fitness_function(x, u, target, ts)
+        costs = env.fitness_function(x, u, target*jnp.ones_like(ts), ts)
 
         return x, y, u, costs
 

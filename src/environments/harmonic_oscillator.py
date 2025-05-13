@@ -5,7 +5,7 @@ import diffrax
 from environments.environment_base import EnvironmentBase
 
 class HarmonicOscillator(EnvironmentBase):
-    def __init__(self, sigma, obs_noise, n_obs = None):
+    def __init__(self, process_noise, obs_noise, n_obs = None):
         self.n_dim = 1
         self.n_var = 2
         self.n_control = 1
@@ -13,7 +13,7 @@ class HarmonicOscillator(EnvironmentBase):
         self.mu0 = jnp.zeros(self.n_var)
         self.P0 = jnp.eye(self.n_var)*jnp.array([3.0, 1.0])
         self.default_obs = 2
-        super().__init__(sigma, obs_noise, self.n_var, self.n_control, self.n_dim, n_obs if n_obs else self.default_obs)
+        super().__init__(process_noise, obs_noise, self.n_var, self.n_control, self.n_dim, n_obs if n_obs else self.default_obs)
 
         self.q = self.r = 0.5
         self.Q = jnp.array([[self.q,0],[0,0]])
@@ -68,7 +68,7 @@ class HarmonicOscillator(EnvironmentBase):
 
         self.b = jnp.array([[0.0,1.0]]).T
         self.G = jnp.array([[0,0],[0,1]])
-        self.V = self.sigma*self.G
+        self.V = self.process_noise*self.G
 
         self.C = jnp.eye(self.n_var)[:self.n_obs]
         self.W = self.obs_noise*jnp.eye(self.n_obs)
@@ -81,70 +81,10 @@ class HarmonicOscillator(EnvironmentBase):
         return self.V
     
     def fitness_function(self, state, control, target, ts):
-        x_d = jnp.array([jnp.squeeze(target), 0])
+        x_d = jnp.stack([jnp.squeeze(target), jnp.zeros_like(target)], axis=1)
 
-        # u_d = jax.vmap(lambda t: -jnp.linalg.pinv(self.b)@self.A.evaluate(t)@x_d)(ts)
-        u_d = -jnp.linalg.pinv(self.b)@self.A@x_d
-        costs = jax.vmap(lambda _state, _u: (_state-x_d).T@self.Q@(_state-x_d) + (_u-u_d)@self.R@(_u-u_d))(state,control)
-        return jnp.sum(costs)
-    
-    def terminate_event(self, state, **kwargs):
-        return jnp.any(jnp.isnan(state.y))# | jnp.any(jnp.isinf(state.y))
-
-class HarmonicOscillator2D(EnvironmentBase):
-    def __init__(self, sigma, obs_noise, n_obs, n_dim):
-        self.n_dim = n_dim
-        self.n_var = 2
-        self.n_control = n_dim
-        self.n_targets = n_dim
-        self.mu0 = jnp.zeros(self.n_var*self.n_dim)
-        self.P0 = jnp.eye(self.n_var*self.n_dim)
-        super().__init__(sigma, obs_noise, n_obs, self.n_var, self.n_control, self.n_dim)
-
-        self.q = self.r = 0.5
-        self.Q = self.block_diagonal(jnp.array([[self.q,0],[0,0]]))
-        self.R = self.block_diagonal(jnp.array([[self.r]]))
-
-    def sample_init_states(self, batch_size, key):
-        return self.mu0 + jrandom.normal(key, shape=(batch_size, self.n_var*self.n_dim))@self.P0
-    
-    def sample_params(self, batch_size, mode, ts, key):
-        return jnp.zeros(batch_size)
-
-    def block_diagonal(self, block):
-        dim1, dim2 = block.shape
-        result = jnp.zeros((self.n_dim*dim1, self.n_dim*dim2))
-        for i in range(self.n_dim):
-            result = result.at[i*dim1:(i+1)*dim1,i*dim2:(i+1)*dim2].set(block)
-        return result
-
-    def initialize_parameters(self, params, ts):
-        _ = params
-
-        self.A = self.block_diagonal(jnp.array([[0,1],[-1,0]]))
-
-        self.b = self.block_diagonal(jnp.array([[0.0,1.0]]).T)
-        self.G = self.block_diagonal(jnp.array([[0,0],[0,1]]))
-        self.V = self.sigma*self.G
-
-        indices = jnp.array([jnp.arange(i*self.n_var, (i+1)*self.n_var)[:self.n_obs] for i in range(self.n_dim)])
-        self.C = jnp.eye(self.n_var*self.n_dim)[jnp.ravel(indices)]
-        self.W = self.obs_noise*jnp.eye(self.n_obs*self.n_dim)
-
-    def drift(self, t, state, args):
-        # print(self.A.shape, state.shape, self.b.shape, args.shape)
-        return self.A@state + self.b@args
-    
-    def diffusion(self, t, state, args):
-        return self.V
-    
-    def fitness_function(self, state, control, target, ts):
-        x_d = jnp.zeros((self.n_var*self.n_dim))
-        for i in range(self.n_dim):
-            x_d = x_d.at[i*self.n_var].set(target[i])
-
-        u_d = -jnp.linalg.pinv(self.b)@self.A@x_d
-        costs = jax.vmap(lambda _state, _u: (_state-x_d).T@self.Q@(_state-x_d) + (_u-u_d)@self.R@(_u-u_d))(state,control)
+        u_d = jax.vmap(lambda _x: -jnp.linalg.pinv(self.b)@self.A@_x)(x_d)
+        costs = jax.vmap(lambda _state, _u, _x_d, _u_d: (_state-_x_d).T@self.Q@(_state-_x_d) + (_u-_u_d)@self.R@(_u-_u_d))(state,control, x_d, u_d)
         return jnp.sum(costs)
     
     def terminate_event(self, state, **kwargs):

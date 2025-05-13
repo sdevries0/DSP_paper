@@ -14,7 +14,7 @@ from algorithms.genetic_programming import GeneticProgramming
 
 from environments.harmonic_oscillator import HarmonicOscillator
 
-import evaluators.lax_evaluate as lax_evaluate
+import evaluators.dynamic_lax_evaluate as dynamic_lax_evaluate
 import evaluators.lagged_evaluator as lagged_evaluate
 
 def get_data(key, env, batch_size, dt, T, param_setting):
@@ -41,7 +41,7 @@ def run(seed, program, obs_noise):
     T = 30
     dt = 0.02
     pool_size = os.cpu_count()
-    batch_size = 24
+    batch_size = 4
     sigma = 0.05
 
     param_setting = "Constant"
@@ -55,7 +55,7 @@ def run(seed, program, obs_noise):
         fitness_function = lagged_evaluate.Evaluator(env, state_size)
 
         # Define the expressions for the layers
-        layer_expressions = [Expression(obs_size=env.n_obs*3, target_size=env.n_targets, include_unary = False, operators_prob=operators_prob)]
+        layer_expressions = [Expression(obs_size=env.n_obs*3, target_size=env.n_targets, unary_functions = [], operators_prob=operators_prob)]
 
         layer_sizes = jnp.array([env.n_control])
         assert len(layer_sizes) == len(layer_expressions), "There is not a set of expressions for every type of layer"
@@ -64,11 +64,11 @@ def run(seed, program, obs_noise):
                                 num_populations = num_populations, state_size = state_size, pool_size = pool_size)
     
     elif program == "Dynamic":
-        fitness_function = lax_evaluate.Evaluator(env, state_size)
+        fitness_function = dynamic_lax_evaluate.Evaluator(env, state_size)
 
         # Define the expressions for the layers
-        layer_expressions = [Expression(obs_size=env.n_obs, state_size=state_size, control_size=env.n_control, target_size=env.n_targets, include_unary = False, operators_prob=operators_prob), 
-                            Expression(obs_size=0, state_size=state_size, control_size=0, target_size=env.n_targets, include_unary = False,
+        layer_expressions = [Expression(obs_size=env.n_obs, state_size=state_size, control_size=env.n_control, target_size=env.n_targets, unary_functions = [], operators_prob=operators_prob), 
+                            Expression(obs_size=0, state_size=state_size, control_size=0, target_size=env.n_targets, unary_functions = [],
                                 condition=lambda self, tree: sum([leaf in self.state_variables for leaf in jax.tree_util.tree_leaves(tree)])==0, operators_prob = operators_prob)]
 
         layer_sizes = jnp.array([state_size, env.n_control])
@@ -99,5 +99,5 @@ def run(seed, program, obs_noise):
 
 if __name__ == '__main__':
     seed = 1
-    # best_fitness, best_solutions = run(seed, "Dynamic", obs_noise=0.5)
-    best_fitness, best_solutions = run(seed, "Lagged", obs_noise=0.5)
+    best_fitness, best_solutions = run(seed, "Dynamic", obs_noise=0.5)
+    # best_fitness, best_solutions = run(seed, "Lagged", obs_noise=0.5)

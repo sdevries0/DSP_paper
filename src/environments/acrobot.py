@@ -4,14 +4,14 @@ import jax.random as jrandom
 from environments.environment_base import EnvironmentBase
 
 class Acrobot(EnvironmentBase):
-    def __init__(self, sigma, obs_noise, n_obs = None):
+    def __init__(self, process_noise, obs_noise, n_obs = None):
         self.n_var = 4
         self.n_control = 1
         self.n_targets = 0
         self.n_dim = 1
         self.init_bounds = jnp.array([0.1,0.1,0.1,0.1])
         self.default_obs = 4
-        super().__init__(sigma, obs_noise, self.n_var, self.n_control, self.n_dim, n_obs if n_obs else self.default_obs)
+        super().__init__(process_noise, obs_noise, self.n_var, self.n_control, self.n_dim, n_obs if n_obs else self.default_obs)
 
         self.R = jnp.array([[0.01]])
 
@@ -84,7 +84,7 @@ class Acrobot(EnvironmentBase):
         self.g = 9.81
 
         self.G = jnp.array([[0,0,0,0],[0,0,0,0],[0,0,1,0],[0,0,0,1]])
-        self.V = self.sigma*self.G
+        self.V = self.process_noise*self.G
 
         self.C = jnp.eye(self.n_var)[:self.n_obs]
         self.W = self.obs_noise*jnp.eye(self.n_obs)*(jnp.array([1,1,1,1])[:self.n_obs])
@@ -128,21 +128,21 @@ class Acrobot(EnvironmentBase):
         return (jnp.abs(state.y[2])>(8*jnp.pi)) | (jnp.abs(state.y[3])>(18*jnp.pi)) | jnp.any(jnp.isnan(state.y)) | jnp.any(jnp.isinf(state.y))
 
 class Acrobot2(EnvironmentBase):
-    def __init__(self, sigma, obs_noise, n_obs = None):
+    def __init__(self, process_noise, obs_noise, n_obs = None):
         self.n_var = 4
         self.n_control = 2
         self.n_targets = 0
         self.n_dim = 1
         self.init_bounds = jnp.array([0.1,0.1,0.1,0.1])
         self.default_obs = 4
-        super().__init__(sigma, obs_noise, self.n_var, self.n_control, self.n_dim, n_obs if n_obs else self.default_obs)
+        super().__init__(process_noise, obs_noise, self.n_var, self.n_control, self.n_dim, n_obs if n_obs else self.default_obs)
 
         self.R = jnp.array(0.01)*jnp.eye(self.n_control)
 
     def sample_init_states(self, batch_size, key):
         init_key, target_key = jrandom.split(key)
         x0 = jrandom.uniform(init_key, shape=(batch_size, self.n_var), minval= -self.init_bounds, maxval= self.init_bounds)
-        targets = jnp.zeros((batch_size, self.n_targets))
+        targets = jnp.zeros((batch_size, self.n_targets, 1))
         return x0, targets
     
     def sample_params(self, batch_size, mode, ts, key):
@@ -208,7 +208,7 @@ class Acrobot2(EnvironmentBase):
         self.g = 9.81
 
         self.G = jnp.array([[0,0,0,0],[0,0,0,0],[0,0,1,0],[0,0,0,1]])
-        self.V = self.sigma*self.G
+        self.V = self.process_noise*self.G
 
         self.C = jnp.eye(self.n_var)[:self.n_obs]
         self.W = self.obs_noise*jnp.eye(self.n_obs)*(jnp.array([1,1,1,1])[:self.n_obs])

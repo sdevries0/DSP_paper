@@ -7,11 +7,11 @@ import copy
 import diffrax
 
 class Evaluator:
-    def __init__(self, env, state_size) -> None:
+    def __init__(self, env, timesteps) -> None:
         self.env = env
         self.max_fitness = 1e6
         self.latent_size = env.n_var
-        self.lag_number = 3
+        self.lag_number = timesteps
 
     def __call__(self, model, data) -> float:
         _, _, _, fitness = self.evaluate_model(model, data)

@@ -80,59 +80,40 @@ register_pytree_node(NetworkTrees, lambda tree: ((tree()), None),
     lambda _, args: NetworkTrees(args))
 
 class RNN:
-    def __init__(self, input_layer, recurrent, bias, action_layer, action_bias) -> None:
+    def __init__(self, input_layer, action_layer) -> None:
         self.input_layer = input_layer
-        self.recurrent = recurrent
-        self.bias = bias
         self.action_layer = action_layer
-        self.action_bias = action_bias
 
     def update(self, y, a, u, target):
-        x = jnp.concatenate([y, u, target])
-        x = jnp.tanh(self.input_layer@x + self.recurrent@a + self.bias)
+        x = jnp.concatenate([y, u, a, target, 1])
+        x = jnp.tanh(self.input_layer@x)
         return x
     
     def act(self, a, target):
-        x = jnp.concatenate([a, target])
+        x = jnp.concatenate([a, target, 1])
 
-        return self.action_layer@x + self.action_bias
+        return self.action_layer@x
     
 class ParameterReshaper:
     def __init__(self, obs_space, latent_size, action_space, n_targets):
-        self.input_layer_shape = (obs_space + action_space + n_targets, latent_size)
-        self.recurrent_layer_shape = (latent_size, latent_size)
-        self.bias_shape = (latent_size,)
+        self.input_layer_shape = (obs_space + action_space + latent_size + n_targets + 1, latent_size)
 
-        self.action_layer_shape = (latent_size + n_targets, action_space)
-        self.action_bias_shape = (action_space,)
+        self.action_layer_shape = (latent_size + n_targets + 1, action_space)
 
-        self.total_parameters = jnp.sum(jnp.array([*map(lambda l: l[0]*l[1], [self.input_layer_shape, self.recurrent_layer_shape, self.action_layer_shape])])) \
-                            + jnp.sum(jnp.array([*map(lambda l: l[0], [self.bias_shape, self.action_bias_shape])]))
+        self.nr_params_input = self.input_layer_shape[0] * self.input_layer_shape[1]
+        self.nr_params_action = self.action_layer_shape[0] * self.action_layer_shape[1]
 
+        self.total_parameters = self.nr_params_input + self.nr_params_action
+                            
     def __call__(self, params):
         assert params.shape[0] == self.total_parameters
 
-        index = 0
         layers = []
 
-        w = params[index:index+self.input_layer_shape[0]*self.input_layer_shape[1]].reshape(self.input_layer_shape[1], self.input_layer_shape[0])
-        index += self.input_layer_shape[0]*self.input_layer_shape[1]
+        w = params[:self.nr_params_input].reshape(self.input_layer_shape[1], self.input_layer_shape[0])
         layers.append(w)
 
-        w = params[index:index+self.recurrent_layer_shape[0]*self.recurrent_layer_shape[1]].reshape(self.recurrent_layer_shape[1], self.recurrent_layer_shape[0])
-        index += self.recurrent_layer_shape[0]*self.recurrent_layer_shape[1]
-        layers.append(w)
-
-        w = params[index:index+self.bias_shape[0]]
-        index += self.bias_shape[0]
-        layers.append(w)
-
-        w = params[index:index+self.action_layer_shape[0]*self.action_layer_shape[1]].reshape(self.action_layer_shape[1], self.action_layer_shape[0])
-        index += self.action_layer_shape[0]*self.action_layer_shape[1]
-        layers.append(w)
-
-        w = params[index:index+self.action_bias_shape[0]]
-        index += self.action_bias_shape[0]
+        w = params[self.nr_params_input:].reshape(self.action_layer_shape[1], self.action_layer_shape[0])
         layers.append(w)
 
         return layers

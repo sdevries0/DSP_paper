@@ -171,8 +171,8 @@ def run(program, obs_noise):
 
         end = time.time()
         # Save timing results
-        os.makedirs(f'/home/sdevries/results/DSP_paper/LagExp/{obs_noise}/{name}/', exist_ok=True)
-        np.save(f'/home/sdevries/results/DSP_paper/LagExp/{obs_noise}/{name}/time_{seed}.npy', end - start)
+        os.makedirs(f'../results/DSP_paper/LagExp/{obs_noise}/{name}/', exist_ok=True)
+        np.save(f'../results/DSP_paper/LagExp/{obs_noise}/{name}/time_{seed}.npy', end - start)
 
         # Get the best solution from the pareto front
         best_idx = jnp.argmin(strategy.pareto_front[0])
@@ -183,8 +183,8 @@ def run(program, obs_noise):
         print(f"Final best fitness: {best_fitness}")
         print(f"Final best solution: {best_solution_str}")
 
-        np.save(f'/home/sdevries/results/DSP_paper/LagExp/{obs_noise}/{name}/best_fitness_{seed}.npy', best_fitnesses)
-        np.save(f'/home/sdevries/results/DSP_paper/LagExp/{obs_noise}/{name}/best_solutions_{seed}.npy', strategy.pareto_front[1])
+        np.save(f'../results/DSP_paper/LagExp/{obs_noise}/{name}/best_fitness_{seed}.npy', best_fitnesses)
+        np.save(f'../results/DSP_paper/LagExp/{obs_noise}/{name}/best_solutions_{seed}.npy', strategy.pareto_front[1])
 
 if __name__ == '__main__':
     algorithms = ["Static", "Lag", "Dynamic"]

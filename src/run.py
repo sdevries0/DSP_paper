@@ -202,9 +202,9 @@ def run(program, args, exp_id):
             print(fitness)
 
             # Save timing results
-            os.makedirs(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/LQG/', exist_ok=True)
+            os.makedirs(f'../results/DSP_paper/Exp{exp_id}/LQG/', exist_ok=True)
 
-        np.save(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/LQG.npy', fitnesses)
+        np.save(f'../results/DSP_paper/Exp{exp_id}/LQG.npy', fitnesses)
     
     else:
         raise ValueError(f"Unknown program type: {program}")
@@ -246,8 +246,8 @@ def run(program, args, exp_id):
 
             end = time.time()
             # Save timing results
-            os.makedirs(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/{name}/', exist_ok=True)
-            np.save(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/{name}/time_{seed}.npy', end - start)
+            os.makedirs(f'../results/DSP_paper/Exp{exp_id}/{name}/', exist_ok=True)
+            np.save(f'../results/DSP_paper/Exp{exp_id}/{name}/time_{seed}.npy', end - start)
 
             # Get the best solution from the pareto front
             best_idx = jnp.argmin(strategy.pareto_front[0])
@@ -258,8 +258,8 @@ def run(program, args, exp_id):
             print(f"Final best fitness: {best_fitness}")
             print(f"Final best solution: {best_solution_str}")
 
-            np.save(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/{name}/best_fitness_{seed}.npy', best_fitnesses)
-            np.save(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/{name}/best_solutions_{seed}.npy', strategy.pareto_front[1])
+            np.save(f'../results/DSP_paper/Exp{exp_id}/{name}/best_fitness_{seed}.npy', best_fitnesses)
+            np.save(f'../results/DSP_paper/Exp{exp_id}/{name}/best_solutions_{seed}.npy', strategy.pareto_front[1])
             
     elif program == "NDE":
         for seed in range(20):
@@ -293,13 +293,13 @@ def run(program, args, exp_id):
 
             end = time.time()
             # Save timing results
-            os.makedirs(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/{name}/', exist_ok=True)
-            np.save(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/{name}/time_{seed}.npy', end - start)
+            os.makedirs(f'../results/DSP_paper/Exp{exp_id}/{name}/', exist_ok=True)
+            np.save(f'../results/DSP_paper/Exp{exp_id}/{name}/time_{seed}.npy', end - start)
 
             best_fitnesses, best_solutions = strategy.get_statistics()
 
-            np.save(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/{name}/best_fitness_{seed}.npy', best_fitnesses)
-            np.save(f'/home/sdevries/results/DSP_paper/Exp{exp_id}/{name}/best_solutions_{seed}.npy', jnp.array(best_solutions))
+            np.save(f'../results/DSP_paper/Exp{exp_id}/{name}/best_fitness_{seed}.npy', best_fitnesses)
+            np.save(f'../results/DSP_paper/Exp{exp_id}/{name}/best_solutions_{seed}.npy', jnp.array(best_solutions))
 
 if __name__ == '__main__':
     algorithms = ["Static", "Dynamic", "NDE", "Random", "LQG"]

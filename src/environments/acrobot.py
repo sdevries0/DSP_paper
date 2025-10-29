@@ -1,14 +1,7 @@
-import jax
-import jax.numpy as jnp
-import jax.random as jr
-from kozax.environments.control_environments.control_environment_base import EnvironmentBase
-from jaxtyping import Array
-from typing import Tuple
-
 """
 kozax: Genetic programming framework in JAX
 
-Copyright (c) 2024 sdevries0
+Copyright (c) 2024
 
 This work is licensed under the Creative Commons Attribution-NonCommercial-NoDerivs 4.0 International License.
 """

@@ -1,7 +1,7 @@
 """
 kozax: Genetic programming framework in JAX
 
-Copyright (c) 2024 sdevries0
+Copyright (c) 2024
 
 This work is licensed under the Creative Commons Attribution-NonCommercial-NoDerivs 4.0 International License.
 """

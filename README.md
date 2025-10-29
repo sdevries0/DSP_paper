@@ -1,13 +1,13 @@
-# Discovering Dynamic Symbolic Policies with Genetic Programming
+# Discovering Continuous-Time Memory-Based Symbolic Policies using Genetic Programming
 
-In this repository, you can find the source code used for the paper "Discovering Dynamic Symbolic Policies with Genetic Programming". Click [here](https://arxiv.org/abs/2406.02765) to read the paper. 
+In this repository, you can find the source code used for the paper "Discovering Continuous-Time Memory-Based Symbolic Policies using Genetic Programming". Click [here](https://arxiv.org/abs/2406.02765) to read the paper. 
 In this paper, we used genetic programming to evolve control policies consisting of symbolic expressions, both with and without memory, and compare with black-box neural differential equations. The methods are tested in various settings on the harmonic oscillator, acrobot and continuous stirred tank reactor.
 
 ## Build
 To use the code, you can clone the repository and create the environment by running:
 ```
 conda env create -f environment.yml
-conda activate gp_policies
+conda activate dsp_env
 ```
 ## Running experiments
 All code used for our paper is located in `src/`.
